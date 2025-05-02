@@ -4,10 +4,11 @@ import logging
 import json
 import base64
 import time
+import uuid
 from datetime import datetime
 from dotenv import load_dotenv
 
-# 환경변수 로드
+# Load environment variables
 load_dotenv()
 VAPI_API_KEY = os.getenv("VAPI_API_KEY")
 VAPI_PHONE_NUMBER_ID = os.getenv("VAPI_PHONE_NUMBER_ID")
@@ -15,63 +16,59 @@ VAPI_ASSISTANT_ID = os.getenv("VAPI_ASSISTANT_ID")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 
-# 로깅 설정
+# Logging setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 async def start_conversation(user_id: str) -> dict:
     """
-    VAPI를 사용하여 사용자와의 음성 대화 시작
-    
+    Start a voice conversation with the user using VAPI.
     Args:
-        user_id: 사용자 ID
-        
+        user_id: User ID
     Returns:
-        dict: 대화 결과 (구조화된 데이터 포함)
+        dict: Conversation result (including structured data)
     """
     try:
-        logger.info(f"사용자 {user_id}와의 음성 대화 시작")
-        
+        logger.info(f"Starting voice conversation with user {user_id}")
         headers = {
             "Authorization": f"Bearer {VAPI_API_KEY}",
             "Content-Type": "application/json"
         }
-        
-        # 어시스턴트 구성
+        # Assistant configuration
         assistant_config = {
             "transcriber": {
                 "provider": "deepgram",
-                "language": "ko"  # 한국어
+                "language": "en"  # English
             },
             "model": {
-                "provider": "anthropic",  # Claude 사용
+                "provider": "anthropic",  # Using Claude
                 "model": "claude-3-sonnet-20240229",
                 "messages": [
                     {
                         "role": "system",
-                        "content": "당신은 노인의 약 복용 여부를 확인하는 친절하고 명확한 어시스턴트입니다. 대화는 짧게 유지하고, 오늘 약을 복용했는지 여부만 간단히 확인하세요. 사용자가 복용했다고 하면 긍정적으로 반응하고, 복용하지 않았다면 중요성을 간단히 언급하되 부담을 주지 않도록 하세요."
+                        "content": "You are a kind and clear assistant who checks whether an elderly person has taken their medication. Keep the conversation short and simply confirm whether the user has taken their medication today. If the user has taken it, respond positively. If not, briefly mention the importance without making them feel pressured."
                     }
                 ]
             },
             "voice": {
                 "provider": "elevenlabs",
-                "voiceId": "korean_female_voice"
+                "voiceId": "english_female_voice"
             },
-            "firstMessage": "안녕하세요, 오늘 약은 복용하셨나요?",
-            "silenceTimeoutSeconds": 10,  # 10초 침묵 후 종료
+            "firstMessage": "Hello, have you taken your medication today?",
+            "silenceTimeoutSeconds": 10,  # End after 10 seconds of silence
             "analysisPlan": {
-                "summaryPrompt": "대화 내용과 약 복용 여부를 간단히 요약하세요.",
-                "structuredDataPrompt": "사용자가 약을 복용했는지 여부와 관련 세부 사항을 추출하세요.",
+                "summaryPrompt": "Briefly summarize the conversation and whether the medication was taken.",
+                "structuredDataPrompt": "Extract whether the user took their medication and any relevant details.",
                 "structuredDataSchema": {
                     "type": "object",
                     "properties": {
                         "medication_taken": {
                             "type": "boolean",
-                            "description": "사용자가 약을 복용했는지 여부"
+                            "description": "Whether the user took their medication"
                         },
                         "details": {
                             "type": "string",
-                            "description": "약 복용 관련 세부 정보 (미복용 이유, 복용 시간 등)"
+                            "description": "Details about medication intake (reason for not taking, time taken, etc.)"
                         },
                         "response_quality": {
                             "type": "string",
@@ -82,60 +79,49 @@ async def start_conversation(user_id: str) -> dict:
                 }
             }
         }
-        
-        # VAPI 통화 생성
+        # Create VAPI call
         payload = {
             "assistant": assistant_config,
-            "name": f"약 복용 체크 - {user_id} - {datetime.now().isoformat()}"
+            "name": f"Medication Check - {user_id} - {datetime.now().isoformat()}"
         }
-        
-        # 통화 생성 요청
+        # Create call request
         call_response = requests.post(
             "https://api.vapi.ai/call/web",
             headers=headers,
             json=payload,
             timeout=60
         )
-        
-        # 응답 검증
+        # Validate response
         if call_response.status_code != 200:
-            logger.error(f"VAPI 통화 생성 오류: {call_response.status_code} - {call_response.text}")
-            raise Exception(f"통화 생성 실패: {call_response.text}")
-        
-        # 통화 ID 추출
+            logger.error(f"VAPI call creation error: {call_response.status_code} - {call_response.text}")
+            raise Exception(f"Call creation failed: {call_response.text}")
+        # Extract call ID
         call_result = call_response.json()
         call_id = call_result.get("id")
-        
         if not call_id:
-            raise Exception("VAPI 응답에서 통화 ID를 찾을 수 없습니다")
-        
-        logger.info(f"통화 생성 성공. 통화 ID: {call_id}")
-        
-        # 통화 완료 대기
+            raise Exception("Call ID not found in VAPI response")
+        logger.info(f"Call created successfully. Call ID: {call_id}")
+        # Wait for call completion
         call_completed = await wait_for_call_completion(call_id, headers)
-        
         if not call_completed:
-            logger.warning("통화가 완료되지 않았습니다. 무응답으로 처리합니다.")
+            logger.warning("Call was not completed. Treating as no response.")
             return {
                 "status": "no_response",
                 "timestamp": datetime.now().isoformat(),
                 "call_id": call_id
             }
-        
-        # 통화 분석 결과 가져오기
+        # Get call analysis result
         analysis_response = requests.get(
             f"https://api.vapi.ai/call/{call_id}/analysis",
             headers=headers,
             timeout=30
         )
-        
         if analysis_response.status_code != 200:
-            logger.error(f"분석 결과 가져오기 오류: {analysis_response.status_code}")
+            logger.error(f"Error fetching analysis result: {analysis_response.status_code}")
             analysis_result = {}
         else:
             analysis_result = analysis_response.json()
-        
-        # 결과 구성
+        # Compose result
         result = {
             "status": "completed",
             "timestamp": datetime.now().isoformat(),
@@ -143,11 +129,9 @@ async def start_conversation(user_id: str) -> dict:
             "summary": analysis_result.get("summary", ""),
             "structured_data": analysis_result.get("structuredData", {})
         }
-        
         return result
-        
     except Exception as e:
-        logger.error(f"음성 대화 오류: {str(e)}")
+        logger.error(f"Voice conversation error: {str(e)}")
         return {
             "status": "error",
             "timestamp": datetime.now().isoformat(),
@@ -156,78 +140,108 @@ async def start_conversation(user_id: str) -> dict:
 
 async def wait_for_call_completion(call_id: str, headers: dict, max_retries: int = 20) -> bool:
     """
-    통화가 완료될 때까지 대기
-    
+    Wait until the call is completed.
     Args:
-        call_id: 통화 ID
-        headers: 요청 헤더
-        max_retries: 최대 재시도 횟수
-        
+        call_id: Call ID
+        headers: Request headers
+        max_retries: Maximum number of retries
     Returns:
-        bool: 통화 완료 여부
+        bool: Whether the call was completed
     """
     retry_count = 0
-    
     while retry_count < max_retries:
         try:
-            # 통화 상태 확인
+            # Check call status
             response = requests.get(
                 f"https://api.vapi.ai/call/{call_id}",
                 headers=headers,
                 timeout=30
             )
-            
             if response.status_code == 200:
                 call_status = response.json()
                 status = call_status.get("status")
-                
                 if status in ["completed", "failed", "cancelled"]:
-                    logger.info(f"통화 완료. 상태: {status}")
+                    logger.info(f"Call completed. Status: {status}")
                     return status == "completed"
-                
-                logger.debug(f"통화 진행 중. 상태: {status}")
+                logger.debug(f"Call in progress. Status: {status}")
             else:
-                logger.error(f"통화 상태 확인 오류: {response.status_code}")
-                
-            # 5초 대기 후 재시도
+                logger.error(f"Error checking call status: {response.status_code}")
+            # Wait 5 seconds before retrying
             time.sleep(5)
             retry_count += 1
-            
         except Exception as e:
-            logger.error(f"통화 상태 확인 중 오류: {str(e)}")
+            logger.error(f"Error while checking call status: {str(e)}")
             time.sleep(5)
             retry_count += 1
-    
-    logger.warning(f"최대 재시도 횟수({max_retries})를 초과했습니다.")
+    logger.warning(f"Exceeded maximum retry count ({max_retries}).")
     return False
 
 def call_user_and_record_result(to_phone_number, user_id):
     """
-    VAPI Outbound Call API를 사용하여 지정된 번호로 전화를 걸고, 결과를 저장합니다.
+    VAPI using outbound call to user
+    Args:
+        to_phone_number: recipient phone number (converted to E.164 format)
+        user_id: user ID
+    Returns:
+        dict: call result
     """
-    url = "https://api.vapi.ai/call"
+    # Check if phone number is in E.164 format
+    if not to_phone_number.startswith('+'):
+        to_phone_number = f"+{to_phone_number}"  # Convert to international format
+    
     headers = {
         "Authorization": f"Bearer {VAPI_API_KEY}",
         "Content-Type": "application/json"
     }
-    payload = {
-        "phoneNumberId": VAPI_PHONE_NUMBER_ID,
-        "assistantId": VAPI_ASSISTANT_ID,
-        "phoneNumber": {
-            "twilioPhoneNumber": TWILIO_PHONE_NUMBER,
-            "twilioAccountSid": TWILIO_ACCOUNT_SID
+    
+    # VAPI outbound call request
+    call_url = "https://api.vapi.ai/call"
+    call_payload = {
+        "assistantId": VAPI_ASSISTANT_ID,  # pre-created assistant ID
+        "phoneNumberId": VAPI_PHONE_NUMBER_ID,  # outbound phone number ID
+        "customer": {
+            "number": to_phone_number  # recipient phone number
         }
     }
-    response = requests.post(url, headers=headers, json=payload)
-    result = response.json()
-    # 결과 저장 로직 (예: DB 또는 메모리)
-    # 예시: medication_records[user_id].append({"timestamp": datetime.now().isoformat(), "call_result": result})
-    return result
+    
+    try:
+        logger.info(f"Attempting outbound call to {to_phone_number}")
+        call_response = requests.post(
+            call_url, 
+            headers=headers, 
+            json=call_payload
+        )
+        
+        if call_response.status_code != 200:
+            error_msg = f"Call creation failed: {call_response.text}"
+            logger.error(error_msg)
+            return {
+                "status": "error",
+                "error": "Call creation failed",
+                "details": call_response.json()
+            }
+        
+        call_data = call_response.json()
+        logger.info(f"Call successfully initiated. Call ID: {call_data.get('id')}")
+        
+        return {
+            "status": "success",
+            "call_id": call_data.get("id"),
+            "details": call_data
+        }
+        
+    except Exception as e:
+        error_msg = f"Error during call attempt: {str(e)}"
+        logger.error(error_msg)
+        return {
+            "status": "error",
+            "error": str(e)
+        }
 
-# 테스트 함수
+# Test function
 async def test_voice_agent():
     result = await start_conversation("test_user")
-    print(f"음성 대화 결과: {json.dumps(result, indent=2)}")
+    print(f"Voice conversation result: {json.dumps(result, indent=2)}")
 
 if __name__ == "__main__":
     import asyncio

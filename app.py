@@ -51,7 +51,7 @@ def index():
 
 @app.route('/api/users', methods=['POST'])
 def create_user():
-    """새 사용자 등록"""
+    """Create new user"""
     data = request.json
     
     user_id = data.get('user_id')
@@ -61,10 +61,10 @@ def create_user():
     if not user_id or not name or not phone:
         return jsonify({
             "status": "error",
-            "message": "필수 정보가 누락되었습니다 (user_id, name, phone)"
+            "message": "Missing required information (user_id, name, phone)"
         }), 400
     
-    # 사용자 정보 저장
+    # Save user information
     users[user_id] = {
         "user_id": user_id,
         "name": name,
@@ -75,7 +75,7 @@ def create_user():
     
     return jsonify({
         "status": "success",
-        "message": "사용자가 등록되었습니다",
+        "message": "User has been registered",
         "user": users[user_id]
     })
 
@@ -122,28 +122,28 @@ def create_schedule_route():
 
 @app.route('/api/check-now', methods=['POST'])
 def check_now():
-    """즉시 약 복용 체크 실행 (자동 전화)"""
+    """Execute immediate medication check (automated call)"""
     data = request.json
     user_id = data.get('user_id')
     
     if not user_id:
         return jsonify({
             "status": "error",
-            "message": "사용자 ID가 필요합니다"
+            "message": "User ID is required"
         }), 400
     
     if user_id not in users:
         return jsonify({
             "status": "error",
-            "message": f"사용자 ID {user_id}를 찾을 수 없습니다"
+            "message": f"User ID {user_id} not found"
         }), 404
     
     try:
-        # 전화번호 가져오기
+        # Get phone number
         to_phone_number = users[user_id]["phone"]
-        # 자동 전화 실행
+        # Execute automated call
         call_result = call_user_and_record_result(to_phone_number, user_id)
-        # 결과 저장 (예시)
+        # Save result
         if user_id not in medication_records:
             medication_records[user_id] = []
         medication_records[user_id].append({
@@ -152,14 +152,14 @@ def check_now():
         })
         return jsonify({
             "status": "success",
-            "message": "자동 전화가 실행되었습니다.",
+            "message": "Automated call has been executed",
             "call_result": call_result
         })
     except Exception as e:
-        logger.error(f"자동 전화 오류: {str(e)}")
+        logger.error(f"Automated call error: {str(e)}")
         return jsonify({
             "status": "error",
-            "message": f"자동 전화 오류: {str(e)}"
+            "message": f"Automated call error: {str(e)}"
         }), 500
 
 @app.route('/api/chart/<user_id>')
