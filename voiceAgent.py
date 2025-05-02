@@ -176,6 +176,35 @@ async def wait_for_call_completion(call_id: str, headers: dict, max_retries: int
     logger.warning(f"Exceeded maximum retry count ({max_retries}).")
     return False
 
+def save_call_result(user_id: str, call_data: dict):
+    """
+    Save call result to a JSON file
+    Args:
+        user_id: User ID
+        call_data: Call result data
+    """
+    try:
+        # Create data directory if not exists
+        os.makedirs('data/calls', exist_ok=True)
+        
+        # Create filename with timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"data/calls/{user_id}_{timestamp}.json"
+        
+        # Save call data
+        with open(filename, 'w') as f:
+            json.dump({
+                'user_id': user_id,
+                'timestamp': datetime.now().isoformat(),
+                'call_data': call_data
+            }, f, indent=2)
+            
+        logger.info(f"Call result saved to {filename}")
+        return filename
+    except Exception as e:
+        logger.error(f"Error saving call result: {str(e)}")
+        return None
+
 def call_user_and_record_result(to_phone_number, user_id):
     """
     VAPI using outbound call to user
@@ -223,6 +252,24 @@ def call_user_and_record_result(to_phone_number, user_id):
         
         call_data = call_response.json()
         logger.info(f"Call successfully initiated. Call ID: {call_data.get('id')}")
+        
+        # Wait for call completion
+        call_completed = wait_for_call_completion(call_data.get('id'), headers)
+        if call_completed:
+            # Get call analysis result
+            analysis_response = requests.get(
+                f"https://api.vapi.ai/call/{call_data.get('id')}/analysis",
+                headers=headers,
+                timeout=30
+            )
+            if analysis_response.status_code == 200:
+                analysis_result = analysis_response.json()
+                call_data['analysis'] = analysis_result
+                
+                # Save call result to file
+                saved_file = save_call_result(user_id, call_data)
+                if saved_file:
+                    call_data['saved_to'] = saved_file
         
         return {
             "status": "success",

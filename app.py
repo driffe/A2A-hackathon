@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from flask import Flask, request, jsonify, render_template
 from apscheduler.schedulers.background import BackgroundScheduler
 
-# 워크플로우 및 활동 함수 임포트
+# Import workflow and activity functions
 from workflow import (
     start_workflow,
     run_worker,
@@ -21,32 +21,32 @@ from workflow import (
 from voiceAgent import start_conversation, call_user_and_record_result
 from alertSender import send_alert
 
-# 환경변수 로드
+# Load environment variables
 load_dotenv()
 
-# 로깅 설정
+# Logging setup
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# Flask 앱 초기화
+# Initialize Flask app
 app = Flask(__name__)
 
-# 현재 실행 중인 워커 프로세스
+# Current worker process
 worker_process = None
 
-# 사용자 데이터 (실제로는 데이터베이스 사용)
+# User data (should use database in production)
 users = {}
 
-# APScheduler 인스턴스 생성 및 시작
+# Initialize and start APScheduler
 scheduler = BackgroundScheduler()
 scheduler.start()
 
 @app.route('/')
 def index():
-    """메인 페이지"""
+    """Main page"""
     return render_template('index.html')
 
 @app.route('/api/users', methods=['POST'])
@@ -81,7 +81,7 @@ def create_user():
 
 @app.route('/api/schedules', methods=['POST'])
 def create_schedule_route():
-    """약 복용 체크 일정 생성"""
+    """Create medication check schedule"""
     data = request.json
     
     user_id = data.get('user_id')
@@ -91,30 +91,30 @@ def create_schedule_route():
     if not user_id or not schedule_time:
         return jsonify({
             "status": "error",
-            "message": "필수 정보가 누락되었습니다 (user_id, schedule_time)"
+            "message": "Missing required information (user_id, schedule_time)"
         }), 400
     
     if user_id not in users:
         return jsonify({
             "status": "error",
-            "message": f"사용자 ID {user_id}를 찾을 수 없습니다"
+            "message": f"User ID {user_id} not found"
         }), 404
     
     try:
-        # 스케줄 생성
+        # Create schedule
         schedule = MedicationSchedule(user_id, schedule_time, frequency)
         users[user_id]["schedules"].append(schedule)
         
-        # 스케줄러에 작업 추가
+        # Add job to scheduler
         add_schedule_to_scheduler(schedule)
         
         return jsonify({
             "status": "success",
-            "message": "스케줄이 생성되었습니다",
+            "message": "Schedule has been created",
             "schedule": schedule.to_dict()
         })
     except Exception as e:
-        logger.error(f"스케줄 생성 오류: {str(e)}")
+        logger.error(f"Schedule creation error: {str(e)}")
         return jsonify({
             "status": "error",
             "message": str(e)
@@ -164,11 +164,11 @@ def check_now():
 
 @app.route('/api/chart/<user_id>')
 def get_chart(user_id):
-    """약 복용 차트 데이터 조회"""
+    """Get medication chart data"""
     if user_id not in users:
         return jsonify({
             "status": "error",
-            "message": f"사용자 ID {user_id}를 찾을 수 없습니다"
+            "message": f"User ID {user_id} not found"
         }), 404
     
     result = get_medication_chart(user_id)
@@ -180,11 +180,11 @@ def get_chart(user_id):
 
 @app.route('/api/users/<user_id>')
 def get_user(user_id):
-    """사용자 정보 조회"""
+    """Get user information"""
     if user_id not in users:
         return jsonify({
             "status": "error",
-            "message": f"사용자 ID {user_id}를 찾을 수 없습니다"
+            "message": f"User ID {user_id} not found"
         }), 404
     
     return jsonify({
@@ -194,11 +194,11 @@ def get_user(user_id):
 
 @app.route('/api/records/<user_id>')
 def get_records(user_id):
-    """약 복용 기록 조회"""
+    """Get medication record data"""
     if user_id not in medication_records:
         return jsonify({
             "status": "error",
-            "message": "기록이 없습니다"
+            "message": "No records found"
         }), 404
     
     return jsonify({
@@ -208,16 +208,16 @@ def get_records(user_id):
 
 @app.route('/api/init-dummy', methods=['POST'])
 def init_dummy():
-    """더미 데이터 초기화"""
+    """Initialize dummy data"""
     try:
         from workflow import create_dummy_data
         create_dummy_data()
         return jsonify({
             "status": "success",
-            "message": "더미 데이터가 생성되었습니다"
+            "message": "Dummy data has been created"
         })
     except Exception as e:
-        logger.error(f"더미 데이터 생성 오류: {str(e)}")
+        logger.error(f"Error creating dummy data: {str(e)}")
         return jsonify({
             "status": "error",
             "message": str(e)
@@ -225,11 +225,11 @@ def init_dummy():
 
 @app.route('/api/call-now', methods=['POST'])
 def call_now():
-    """즉시 전화걸기"""
+    """Make immediate call"""
     data = request.json
     user_id = data.get('user_id')
     if not user_id or user_id not in users:
-        return jsonify({"status": "error", "message": "유효하지 않은 사용자 ID"}), 400
+        return jsonify({"status": "error", "message": "Invalid user ID"}), 400
     to_phone_number = users[user_id]["phone"]
     try:
         call_result = call_user_and_record_result(to_phone_number, user_id)
@@ -239,22 +239,22 @@ def call_now():
             "timestamp": datetime.now().isoformat(),
             "call_result": call_result
         })
-        return jsonify({"status": "success", "message": "즉시 전화가 실행되었습니다.", "call_result": call_result})
+        return jsonify({"status": "success", "message": "Call has been initiated", "call_result": call_result})
     except Exception as e:
-        logger.error(f"즉시 전화 오류: {str(e)}")
+        logger.error(f"Call error: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/schedule-call', methods=['POST'])
 def schedule_call():
-    """예약 전화걸기"""
+    """Schedule a call"""
     data = request.json
     user_id = data.get('user_id')
-    schedule_time = data.get('schedule_time')  # ISO 포맷 문자열
+    schedule_time = data.get('schedule_time')  # ISO format string
     if not user_id or user_id not in users or not schedule_time:
-        return jsonify({"status": "error", "message": "필수 정보가 누락되었습니다."}), 400
+        return jsonify({"status": "error", "message": "Missing required information"}), 400
     to_phone_number = users[user_id]["phone"]
     try:
-        # 예약 작업 등록
+        # Register scheduled job
         def job():
             call_result = call_user_and_record_result(to_phone_number, user_id)
             if user_id not in medication_records:
@@ -265,14 +265,14 @@ def schedule_call():
             })
         run_time = datetime.fromisoformat(schedule_time)
         scheduler.add_job(job, 'date', run_date=run_time)
-        return jsonify({"status": "success", "message": f"{schedule_time}에 전화가 예약되었습니다."})
+        return jsonify({"status": "success", "message": f"Call scheduled for {schedule_time}"})
     except Exception as e:
-        logger.error(f"예약 전화 오류: {str(e)}")
+        logger.error(f"Schedule call error: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/users', methods=['GET'])
 def get_users():
-    """전체 사용자 목록 반환 (스케줄 객체는 dict로 변환)"""
+    """Return all users list (convert schedule objects to dict)"""
     def serialize_user(user):
         user_copy = user.copy()
         user_copy["schedules"] = [
@@ -283,100 +283,100 @@ def get_users():
     return jsonify({"users": [serialize_user(u) for u in users.values()]})
 
 def run_worker_process():
-    """워커 프로세스에서 실행될 함수"""
+    """Function to run in worker process"""
     asyncio.run(run_worker())
 
 def start_worker_process():
-    """Temporal 워커 프로세스 시작"""
+    """Start Temporal worker process"""
     global worker_process
     
     if worker_process is None or not worker_process.is_alive():
         import multiprocessing
         worker_process = multiprocessing.Process(target=run_worker_process)
         worker_process.start()
-        logger.info(f"Temporal 워커 시작됨 (PID: {worker_process.pid})")
+        logger.info(f"Temporal worker started (PID: {worker_process.pid})")
 
 @click.group()
 def cli():
-    """약 복용 체크 시스템 CLI"""
+    """Medication Check System CLI"""
     pass
 
 @cli.command()
-@click.option('--host', default='0.0.0.0', help='서버 호스트')
-@click.option('--port', default=5001, help='서버 포트')
+@click.option('--host', default='0.0.0.0', help='Server host')
+@click.option('--port', default=5001, help='Server port')
 def serve(host, port):
-    """웹 서버 실행"""
-    # Flask 앱 실행
+    """Run web server"""
+    # Run Flask app
     app.run(host=host, port=port, debug=True)
 
 @cli.command()
 @click.argument('user_id')
 @click.argument('schedule_time')
-@click.option('--frequency', default='daily', help='체크 주기 (daily, weekly, hourly)')
+@click.option('--frequency', default='daily', help='Check frequency (daily, weekly, hourly)')
 def schedule(user_id, schedule_time, frequency):
-    """약 복용 체크 일정 생성"""
+    """Create medication check schedule"""
     async def run():
         try:
             workflow_handle = await start_workflow(user_id, schedule_time, frequency)
-            print(f"약 복용 체크 일정이 생성되었습니다. 워크플로우 ID: {workflow_handle.id}")
+            print(f"Medication check schedule created. Workflow ID: {workflow_handle.id}")
         except Exception as e:
-            print(f"오류: {str(e)}")
+            print(f"Error: {str(e)}")
     
-    # Temporal 워커 시작
+    # Start Temporal worker
     start_worker_process()
     
-    # 일정 생성 실행
+    # Execute schedule creation
     asyncio.run(run())
 
 @cli.command()
 @click.argument('user_id')
 def check(user_id):
-    """즉시 약 복용 체크 실행"""
+    """Execute immediate medication check"""
     async def run():
         try:
-            # 음성 대화 시작
-            print("음성 대화 시작...")
+            # Start voice conversation
+            print("Starting voice conversation...")
             conversation_result = await start_conversation(user_id)
             
-            # 응답이 없는 경우
+            # No response case
             if conversation_result.get("status") == "no_response":
-                print("사용자가 응답하지 않았습니다.")
+                print("User did not respond")
                 await send_alert({
                     "user_id": user_id,
                     "alert_type": "no_response",
-                    "message": "사용자가 약 복용 체크에 응답하지 않았습니다.",
+                    "message": "User did not respond to medication check",
                     "severity": "medium"
                 })
                 return
             
-            # 약 복용 여부 확인
+            # Check medication status
             structured_data = conversation_result.get("structured_data", {})
             medication_taken = structured_data.get("medication_taken", False)
-            details = structured_data.get("details", "정보 없음")
+            details = structured_data.get("details", "No information")
             
-            print(f"약 복용 여부: {'복용함' if medication_taken else '복용하지 않음'}")
-            print(f"상세 정보: {details}")
+            print(f"Medication taken: {'Yes' if medication_taken else 'No'}")
+            print(f"Details: {details}")
             
-            # 약 복용 여부에 따른 알림 전송
+            # Send alert based on medication status
             if not medication_taken:
-                print("미복용 알림 전송 중...")
+                print("Sending non-compliance alert...")
                 await send_alert({
                     "user_id": user_id,
                     "alert_type": "medication_not_taken",
-                    "message": f"사용자가 약을 복용하지 않았습니다. 상세 내용: {details}",
+                    "message": f"User has not taken medication. Details: {details}",
                     "severity": "medium"
                 })
                 
         except Exception as e:
-            print(f"약 복용 체크 오류: {str(e)}")
+            print(f"Medication check error: {str(e)}")
     
-    # 약 복용 체크 실행
+    # Execute medication check
     asyncio.run(run())
 
 @cli.command()
 def worker():
-    """Temporal 워커 실행"""
-    print("Temporal 워커 시작 중...")
+    """Run Temporal worker"""
+    print("Starting Temporal worker...")
     asyncio.run(run_worker())
 
 if __name__ == '__main__':

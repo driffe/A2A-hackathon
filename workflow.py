@@ -12,22 +12,22 @@ import plotly.graph_objects as go
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-# 활동 함수 임포트
+# Import activity functions
 from voiceAgent import start_conversation
 from alertSender import send_alert
 
-# 환경변수 로드
+# Load environment variables
 load_dotenv()
 
-# 로깅 설정
+# Logging setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 사용자 데이터 저장소 (실제로는 데이터베이스 사용)
+# Data storage (should use database in production)
 users = {}
 medication_records = {}
 
-# 워크플로우 매개변수 정의
+# Workflow parameters definition
 class MedicationCheckParams:
     def __init__(self, user_id: str, schedule_time: str, frequency: str = "daily"):
         self.user_id = user_id
@@ -36,20 +36,20 @@ class MedicationCheckParams:
         self.consecutive_no_responses = 0
         self.max_no_responses = 3
 
-# 활동 함수 정의
+# Activity function definition
 @activity.defn
 async def execute_medication_check(user_id: str) -> dict:
-    # 1. 음성 대화 시작
+    # 1. Start voice conversation
     conversation_result = await start_conversation(user_id)
     
-    # 2. 응답이 없는 경우
+    # 2. Handle no response case
     if not conversation_result or conversation_result.get("status") == "no_response":
         return {
             "status": "no_response",
             "timestamp": datetime.now().isoformat()
         }
     
-    # 3. 약 복용 여부 확인
+    # 3. Check medication status
     structured_data = conversation_result.get("structured_data", {})
     medication_taken = structured_data.get("medication_taken", False)
     
@@ -60,12 +60,12 @@ async def execute_medication_check(user_id: str) -> dict:
         "details": structured_data.get("details", "")
     }
     
-    # 4. 약 복용 여부에 따른 알림 전송
+    # 4. Send alert based on medication status
     if not medication_taken:
         await send_alert({
             "user_id": user_id,
             "alert_type": "medication_not_taken",
-            "message": f"사용자가 약을 복용하지 않았습니다. 상세 내용: {structured_data.get('details', '정보 없음')}",
+            "message": f"User has not taken medication. Details: {structured_data.get('details', 'No information')}",
             "severity": "medium"
         })
     
@@ -76,11 +76,11 @@ async def send_no_response_alert(user_id: str, consecutive_no_responses: int):
     await send_alert({
         "user_id": user_id,
         "alert_type": "no_response",
-        "message": f"{consecutive_no_responses}회 연속 응답이 없습니다. 약 복용 확인이 필요합니다.",
+        "message": f"{consecutive_no_responses} consecutive responses have not been received. Medication check is needed.",
         "severity": "high"
     })
 
-# 약 복용 체크 워크플로우 정의
+# Medication check workflow definition
 @workflow.defn
 class MedicationCheckWorkflow:
     def __init__(self):
@@ -93,10 +93,10 @@ class MedicationCheckWorkflow:
         self.params = params
         self.last_check_time = datetime.now()
         
-        # 첫 번째 체크 실행
+        # Execute first check
         result = await self._execute_check()
         
-        # 주기적 체크 반복 설정
+        # Set periodic check repetition
         if self.params.frequency == "daily":
             interval = timedelta(days=1)
         elif self.params.frequency == "weekly":
@@ -104,9 +104,9 @@ class MedicationCheckWorkflow:
         elif self.params.frequency == "hourly":
             interval = timedelta(hours=1)
         else:
-            interval = timedelta(days=1)  # 기본값
+            interval = timedelta(days=1)  # Default value
         
-        # 다음 체크 예약
+        # Schedule next check
         next_check_time = self.last_check_time + interval
         workflow.create_timer(next_check_time).wait()
         await self._execute_check()
@@ -116,18 +116,18 @@ class MedicationCheckWorkflow:
     async def _execute_check(self) -> dict:
         user_id = self.params.user_id
         
-        # 약 복용 체크 실행
+        # Execute medication check
         result = await workflow.execute_activity(
             execute_medication_check,
             args=[user_id],
             start_to_close_timeout=timedelta(minutes=5)
         )
         
-        # 응답이 없는 경우 처리
+        # Handle no response case
         if result.get("status") == "no_response":
             self.params.consecutive_no_responses += 1
             
-            # 연속 무응답 임계값 초과 시 알림 전송
+            # Send alert if consecutive no response threshold is exceeded
             if self.params.consecutive_no_responses >= self.params.max_no_responses:
                 await workflow.execute_activity(
                     send_no_response_alert,
@@ -140,7 +140,7 @@ class MedicationCheckWorkflow:
         
         return result
 
-# Temporal 워커 실행 함수
+# Temporal worker execution function
 async def run_worker():
     client = await Client.connect("localhost:7233")
     
@@ -153,7 +153,7 @@ async def run_worker():
     
     await worker.run()
 
-# 워크플로우 시작 함수
+# Workflow start function
 async def start_workflow(user_id: str, schedule_time: str, frequency: str = "daily"):
     client = await Client.connect("localhost:7233")
     
@@ -190,33 +190,33 @@ class MedicationSchedule:
         }
 
 def create_schedule(user_id: str, schedule_time: str, frequency: str = "daily") -> dict:
-    """새로운 약 복용 스케줄 생성"""
+    """Create new medication schedule"""
     try:
         if user_id not in users:
-            return {"status": "error", "message": "사용자를 찾을 수 없습니다"}
+            return {"status": "error", "message": "User not found"}
             
         schedule = MedicationSchedule(user_id, schedule_time, frequency)
         users[user_id]["schedules"].append(schedule)
         
-        # 스케줄러에 작업 추가
+        # Add job to scheduler
         add_schedule_to_scheduler(schedule)
         
         return {
             "status": "success",
-            "message": "스케줄이 생성되었습니다",
+            "message": "Schedule created successfully",
             "schedule": schedule.to_dict()
         }
     except Exception as e:
-        logger.error(f"스케줄 생성 오류: {str(e)}")
+        logger.error(f"Schedule creation error: {str(e)}")
         return {"status": "error", "message": str(e)}
 
 def add_schedule_to_scheduler(schedule: MedicationSchedule):
-    """스케줄러에 작업 추가"""
+    """Add job to scheduler"""
     try:
-        # 스케줄 시간 파싱
+        # Parse schedule time
         hour, minute = map(int, schedule.schedule_time.split(":"))
         
-        # 스케줄러에 작업 추가
+        # Add job to scheduler
         if schedule.frequency == "daily":
             scheduler.add_job(
                 check_medication,
@@ -232,19 +232,19 @@ def add_schedule_to_scheduler(schedule: MedicationSchedule):
                 id=f"medication_check_{schedule.user_id}"
             )
             
-        logger.info(f"스케줄 추가됨: {schedule.user_id} - {schedule.schedule_time}")
+        logger.info(f"Schedule added: {schedule.user_id} - {schedule.schedule_time}")
     except Exception as e:
-        logger.error(f"스케줄러 작업 추가 오류: {str(e)}")
+        logger.error(f"Scheduler job addition error: {str(e)}")
 
 async def check_medication(user_id: str):
-    """약 복용 체크 실행"""
+    """Execute medication check"""
     try:
-        logger.info(f"약 복용 체크 시작: {user_id}")
+        logger.info(f"Medication check started: {user_id}")
         
-        # SMS 전송
+        # SMS sending
         from alertSender import send_alert
         
-        message = "안녕하세요. 오늘 약을 복용하셨나요? (예/아니오로 답변해주세요)"
+        message = "Hello. Have you taken your medication today? (Please respond with 'yes' or 'no')"
         
         result = await send_alert({
             "user_id": user_id,
@@ -252,7 +252,7 @@ async def check_medication(user_id: str):
             "recipients": [users[user_id]["phone"]]
         })
         
-        # 체크 기록 저장
+        # Check record storage
         record = {
             "timestamp": datetime.now().isoformat(),
             "user_id": user_id,
@@ -267,37 +267,37 @@ async def check_medication(user_id: str):
         return result
         
     except Exception as e:
-        logger.error(f"약 복용 체크 오류: {str(e)}")
+        logger.error(f"Medication check error: {str(e)}")
         return {"status": "error", "message": str(e)}
 
 def get_medication_chart(user_id: str) -> dict:
-    """약 복용 차트 데이터 생성"""
+    """Create medication chart data"""
     try:
         if user_id not in medication_records:
-            return {"status": "error", "message": "기록이 없습니다"}
+            return {"status": "error", "message": "No records found"}
             
-        # 데이터프레임 생성
+        # Create dataframe
         df = pd.DataFrame(medication_records[user_id])
         df["timestamp"] = pd.to_datetime(df["timestamp"])
         
-        # 일별 통계
+        # Daily statistics
         daily_stats = df.groupby(df["timestamp"].dt.date).size().reset_index(name="count")
         
-        # 차트 생성
+        # Chart creation
         fig = go.Figure()
         
-        # 일별 알림 전송 횟수
+        # Daily alert sending count
         fig.add_trace(go.Bar(
             x=daily_stats["timestamp"],
             y=daily_stats["count"],
-            name="알림 전송 횟수"
+            name="Alert Sending Count"
         ))
         
-        # 차트 레이아웃 설정
+        # Chart layout setting
         fig.update_layout(
-            title="약 복용 알림 통계",
-            xaxis_title="날짜",
-            yaxis_title="알림 전송 횟수",
+            title="Medication Alert Sending Statistics",
+            xaxis_title="Date",
+            yaxis_title="Alert Sending Count",
             showlegend=True
         )
         
@@ -307,72 +307,72 @@ def get_medication_chart(user_id: str) -> dict:
         }
         
     except Exception as e:
-        logger.error(f"차트 생성 오류: {str(e)}")
+        logger.error(f"Chart creation error: {str(e)}")
         return {"status": "error", "message": str(e)}
 
-# 스케줄러 초기화
+# Scheduler initialization
 scheduler = BackgroundScheduler()
 scheduler.start()
 
-# 테스트 함수
+# Test function
 def test_schedule():
-    # 테스트 사용자 생성
+    # Create test user
     test_user = {
         "user_id": "test_user",
-        "name": "테스트 사용자",
+        "name": "Test User",
         "phone": "+821012345678",
         "schedules": []
     }
     users["test_user"] = test_user
     
-    # 테스트 스케줄 생성
+    # Create test schedule
     result = create_schedule("test_user", "09:00", "daily")
-    print(f"스케줄 생성 결과: {result}")
+    print(f"Schedule creation result: {result}")
 
 def create_dummy_data():
-    """더미 데이터 생성"""
-    # 더미 사용자 생성
+    """Create dummy data"""
+    # Create dummy users
     dummy_users = [
         {
             "user_id": "user1",
-            "name": "홍길동",
+            "name": "John Doe",
             "phone": "+14083048254",
             "schedules": []
         },
         {
             "user_id": "user2",
-            "name": "김철수",
+            "name": "Jane Smith",
             "phone": "+821098765432",
             "schedules": []
         }
     ]
     
-    # 더미 사용자 데이터 추가
+    # Add dummy user data
     for user in dummy_users:
         users[user["user_id"]] = user
     
-    # 더미 스케줄 생성
+    # Create dummy schedules
     for user in dummy_users:
         schedule = MedicationSchedule(user["user_id"], "09:00", "daily")
         users[user["user_id"]]["schedules"].append(schedule)
         add_schedule_to_scheduler(schedule)
     
-    # 더미 약 복용 기록 생성
+    # Create dummy medication records
     for user in dummy_users:
         medication_records[user["user_id"]] = [
             {
                 "timestamp": (datetime.now() - timedelta(days=i)).isoformat(),
                 "user_id": user["user_id"],
-                "medication_taken": i % 2 == 0,  # 번갈아가며 복용/미복용
-                "details": "더미 데이터" if i % 2 == 0 else "약을 복용하지 않음"
+                "medication_taken": i % 2 == 0,  # Alternating between taken/not taken
+                "details": "Dummy data" if i % 2 == 0 else "Medication not taken"
             }
-            for i in range(7)  # 최근 7일간의 기록
+            for i in range(7)  # Last 7 days of records
         ]
     
-    logger.info("더미 데이터가 생성되었습니다")
+    logger.info("Dummy data has been created")
 
 if __name__ == "__main__":
-    # 테스트용 워커 실행
+    # Run test worker
     asyncio.run(run_worker())
     test_schedule()
     create_dummy_data()
