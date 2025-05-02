@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medication Check System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="mb-4">Medication Check System</h1>
+        
+        <!-- User Registration Form -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Register New User</h5>
+            </div>
+            <div class="card-body">
+                <form id="userForm">
+                    <div class="mb-3">
+                        <label for="user_id" class="form-label">User ID</label>
+                        <input type="text" class="form-control" id="user_id" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="phone" class="form-label">Phone Number</label>
+                        <input type="tel" class="form-control" id="phone" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Register</button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Schedule Setting Form -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Set Medication Schedule</h5>
+            </div>
+            <div class="card-body">
+                <form id="scheduleForm">
+                    <div class="mb-3">
+                        <label for="schedule_user_id" class="form-label">User ID</label>
+                        <input type="text" class="form-control" id="schedule_user_id" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="schedule_time" class="form-label">Check Time</label>
+                        <input type="time" class="form-control" id="schedule_time" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="frequency" class="form-label">Frequency</label>
+                        <select class="form-select" id="frequency" required>
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Set Schedule</button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Chart Display Area -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Medication Statistics</h5>
+            </div>
+            <div class="card-body">
+                <form id="chartForm" class="mb-3">
+                    <div class="mb-3">
+                        <label for="chart_user_id" class="form-label">User ID</label>
+                        <input type="text" class="form-control" id="chart_user_id" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Show Chart</button>
+                </form>
+                <div id="chart"></div>
+            </div>
+        </div>
+
+        <!-- User List Table -->
+        <h2>User List</h2>
+        <table class="table" id="user-table">
+            <thead>
+                <tr>
+                    <th>User ID</th>
+                    <th>Name</th>
+                    <th>Phone Number</th>
+                    <th>Call Now</th>
+                    <th>Schedule Call</th>
+                </tr>
+            </thead>
+            <tbody id="user-list">
+                <!-- JS generated -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // User Registration
+        document.getElementById('userForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const user_id = document.getElementById('user_id').value;
+            const name = document.getElementById('name').value;
+            const phone = document.getElementById('phone').value;
+            
+            try {
+                const response = await fetch('/api/users', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ user_id, name, phone })
+                });
+                
+                const result = await response.json();
+                alert(result.message);
+            } catch (error) {
+                alert('An error occurred: ' + error);
+            }
+        });
+        
+        // Schedule Setting
+        document.getElementById('scheduleForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const user_id = document.getElementById('schedule_user_id').value;
+            const schedule_time = document.getElementById('schedule_time').value;
+            const frequency = document.getElementById('frequency').value;
+            
+            try {
+                const response = await fetch('/api/schedules', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ user_id, schedule_time, frequency })
+                });
+                
+                const result = await response.json();
+                alert(result.message);
+            } catch (error) {
+                alert('An error occurred: ' + error);
+            }
+        });
+        
+        // Chart Query
+        document.getElementById('chartForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const user_id = document.getElementById('chart_user_id').value;
+            
+            try {
+                const response = await fetch(`/api/chart/${user_id}`);
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    const chartData = JSON.parse(result.chart);
+                    Plotly.newPlot('chart', chartData.data, chartData.layout);
+                } else {
+                    alert(result.message);
+                }
+            } catch (error) {
+                alert('An error occurred: ' + error);
+            }
+        });
+
+        // Load User List and Render Table
+        async function loadUsers() {
+            const res = await fetch('/api/users');
+            const data = await res.json();
+            const users = data.users || Object.values(data);
+            const tbody = document.getElementById('user-list');
+            tbody.innerHTML = '';
+            Object.values(users).forEach(user => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${user.user_id}</td>
+                    <td>${user.name}</td>
+                    <td>${user.phone}</td>
+                    <td><button class="btn btn-primary btn-sm" onclick="callNow('${user.user_id}')">Call Now</button></td>
+                    <td>
+                        <input type="datetime-local" id="schedule-${user.user_id}" style="width:160px;">
+                        <button class="btn btn-success btn-sm" onclick="scheduleCall('${user.user_id}')">Schedule</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Call Now
+        async function callNow(userId) {
+            if (!confirm('Are you sure you want to make a call now?')) return;
+            const res = await fetch('/api/call-now', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId })
+            });
+            const data = await res.json();
+            let msg = data.message || data.status;
+            if (data.call_result) {
+                msg += '\n\nFull response:\n' + JSON.stringify(data.call_result, null, 2);
+            }
+            alert(msg);
+        }
+
+        // Schedule Call
+        async function scheduleCall(userId) {
+            const dt = document.getElementById('schedule-' + userId).value;
+            if (!dt) return alert('Please enter a schedule time!');
+            const iso = new Date(dt).toISOString();
+            const res = await fetch('/api/schedule-call', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, schedule_time: iso })
+            });
+            const data = await res.json();
+            alert(data.message || data.status);
+        }
+
+        // Load user list on page load
+        window.addEventListener('DOMContentLoaded', loadUsers);
+    </script>
+</body>
+</html> 
