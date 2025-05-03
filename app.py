@@ -57,6 +57,7 @@ def create_user():
     user_id = data.get('user_id')
     name = data.get('name')
     phone = data.get('phone')
+    sms_phone = data.get('sms_phone', phone)  # 기본값은 phone과 동일
     
     if not user_id or not name or not phone:
         return jsonify({
@@ -69,6 +70,7 @@ def create_user():
         "user_id": user_id,
         "name": name,
         "phone": phone,
+        "sms_phone": sms_phone,  # 문자 수신 번호 추가
         "created_at": datetime.now().isoformat(),
         "schedules": []
     }

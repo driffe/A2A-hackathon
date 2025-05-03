@@ -30,9 +30,13 @@ async def send_alert(alert_data: dict) -> dict:
     """
     try:
         logger.info(f"Starting alert sending: {alert_data.get('alert_type')}")
+        logger.info(f"Environment variables - SID: {bool(TWILIO_ACCOUNT_SID)}, Token: {bool(TWILIO_AUTH_TOKEN)}, Phone: {TWILIO_PHONE_NUMBER}")
         
         message = alert_data.get("message")
         recipients = alert_data.get("recipients", [])
+        
+        logger.info(f"Message to send: {message}")
+        logger.info(f"Recipients: {recipients}")
         
         # Initialize Twilio client
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
@@ -43,6 +47,8 @@ async def send_alert(alert_data: dict) -> dict:
         # Send SMS
         for recipient in recipients:
             try:
+                logger.info(f"Attempting to send SMS to: {recipient}")
+                
                 # Send SMS
                 message = client.messages.create(
                     from_=TWILIO_PHONE_NUMBER,
@@ -55,7 +61,7 @@ async def send_alert(alert_data: dict) -> dict:
                     "message_sid": message.sid
                 }
                 
-                logger.info(f"SMS sent successfully: {recipient}")
+                logger.info(f"SMS sent successfully to {recipient}. Message SID: {message.sid}")
                 
             except Exception as e:
                 logger.error(f"SMS sending error ({recipient}): {str(e)}")

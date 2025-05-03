@@ -27,8 +27,13 @@
                         <input type="text" class="form-control" id="name" required>
                     </div>
                     <div class="mb-3">
-                        <label for="phone" class="form-label">Phone Number</label>
+                        <label for="phone" class="form-label">Phone Number (for calls)</label>
                         <input type="tel" class="form-control" id="phone" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="sms_phone" class="form-label">Phone Number (for SMS)</label>
+                        <input type="tel" class="form-control" id="sms_phone">
+                        <div class="form-text">If not provided, call phone number will be used for SMS</div>
                     </div>
                     <button type="submit" class="btn btn-primary">Register</button>
                 </form>
@@ -86,7 +91,8 @@
                 <tr>
                     <th>User ID</th>
                     <th>Name</th>
-                    <th>Phone Number</th>
+                    <th>Phone (Calls)</th>
+                    <th>Phone (SMS)</th>
                     <th>Call Now</th>
                     <th>Schedule Call</th>
                 </tr>
@@ -104,6 +110,7 @@
             const user_id = document.getElementById('user_id').value;
             const name = document.getElementById('name').value;
             const phone = document.getElementById('phone').value;
+            const sms_phone = document.getElementById('sms_phone').value;
             
             try {
                 const response = await fetch('/api/users', {
@@ -111,7 +118,7 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ user_id, name, phone })
+                    body: JSON.stringify({ user_id, name, phone, sms_phone })
                 });
                 
                 const result = await response.json();
@@ -177,6 +184,7 @@
                     <td>${user.user_id}</td>
                     <td>${user.name}</td>
                     <td>${user.phone}</td>
+                    <td>${user.sms_phone || user.phone}</td>
                     <td><button class="btn btn-primary btn-sm" onclick="callNow('${user.user_id}')">Call Now</button></td>
                     <td>
                         <input type="datetime-local" id="schedule-${user.user_id}" style="width:160px;">

@@ -44,6 +44,13 @@ async def execute_medication_check(user_id: str) -> dict:
     
     # 2. Handle no response case
     if not conversation_result or conversation_result.get("status") == "no_response":
+        # Send SMS for no response
+        await send_alert({
+            "user_id": user_id,
+            "alert_type": "no_response",
+            "message": "Call attempt result: No response. We will contact you again.",
+            "recipients": [users[user_id]["sms_phone"]]
+        })
         return {
             "status": "no_response",
             "timestamp": datetime.now().isoformat()
@@ -60,13 +67,27 @@ async def execute_medication_check(user_id: str) -> dict:
         "details": structured_data.get("details", "")
     }
     
-    # 4. Send alert based on medication status
+    # 4. Send SMS summary of the call
+    summary_message = f"Call result summary:\nTime: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+    summary_message += "Medication taken: " + ("Yes" if medication_taken else "No") + "\n"
+    if result["details"]:
+        summary_message += f"Details: {result['details']}"
+    
+    await send_alert({
+        "user_id": user_id,
+        "alert_type": "call_summary",
+        "message": summary_message,
+        "recipients": [users[user_id]["sms_phone"]]
+    })
+    
+    # 5. Send alert based on medication status
     if not medication_taken:
         await send_alert({
             "user_id": user_id,
             "alert_type": "medication_not_taken",
-            "message": f"User has not taken medication. Details: {structured_data.get('details', 'No information')}",
-            "severity": "medium"
+            "message": f"You did not take your medication. Details: {structured_data.get('details', 'No information')}",
+            "severity": "medium",
+            "recipients": [users[user_id]["sms_phone"]]
         })
     
     return result
@@ -249,7 +270,7 @@ async def check_medication(user_id: str):
         result = await send_alert({
             "user_id": user_id,
             "message": message,
-            "recipients": [users[user_id]["phone"]]
+            "recipients": [users[user_id]["sms_phone"]]
         })
         
         # Check record storage
@@ -321,6 +342,7 @@ def test_schedule():
         "user_id": "test_user",
         "name": "Test User",
         "phone": "+821012345678",
+        "sms_phone": "+821012345678",
         "schedules": []
     }
     users["test_user"] = test_user
@@ -337,12 +359,14 @@ def create_dummy_data():
             "user_id": "user1",
             "name": "John Doe",
             "phone": "+14083048254",
+            "sms_phone": "+14083048254",
             "schedules": []
         },
         {
             "user_id": "user2",
             "name": "Jane Smith",
             "phone": "+821098765432",
+            "sms_phone": "+821098765432",
             "schedules": []
         }
     ]
